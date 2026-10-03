@@ -1,0 +1,52 @@
+{
+  "name": "jj-review",
+  "displayName": "JJ Review",
+  "description": "Review Jujutsu revisions.",
+  "version": "0.0.1",
+  "publisher": "robertas",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jj-review",
+          "title": "JJ Review",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "jj-review": [
+        {
+          "id": "jj-review.view",
+          "name": "JJ Review"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "package": "pnpm run check && pnpm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.3.2",
+    "esbuild": "^0.25.3",
+    "typescript": "^5.8.3",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.0.0",
+    "effect": "^4.0.0"
+  }
+}
