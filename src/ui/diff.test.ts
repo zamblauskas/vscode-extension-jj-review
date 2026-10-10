@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ChangeIdSchema } from "../model/revision";
 import { FsPathSchema } from "../model/fs-path";
-import { ChangeIdPathFromUriSchema, JjReviewScheme } from "./diff";
+import { ChangeIdPathFromUriSchema, JjReviewScheme } from "./uri";
 
 vi.mock("vscode", () => {
   class Uri {
@@ -35,55 +35,54 @@ vi.mock("vscode", () => {
 import * as vscode from "vscode";
 
 describe("ChangeIdPathFromUriSchema", () => {
-  const changeId = ChangeIdSchema.make("qzsoyvxrknqvnrqkuywqqtvtnorklsmy");
+  const changeId = ChangeIdSchema.make("some-change-id");
   const path = FsPathSchema.make("src/foo.ts");
 
-  it("decodes jjReview URIs", () => {
-    const uri = vscode.Uri.from({
-      scheme: JjReviewScheme,
-      path,
-      query: changeId,
-    });
+  const decoded = {
+    path,
+    query: { side: "left" as const, changeId: Option.some(changeId) },
+  };
 
-    expect(Schema.decodeUnknownSync(ChangeIdPathFromUriSchema)(uri)).toEqual({
-      changeId: Option.some(changeId),
-      path,
-    });
+  it("decodes jjReview URIs", () => {
+    const uri = Schema.encodeSync(ChangeIdPathFromUriSchema)(decoded);
+
+    expect(Schema.decodeUnknownSync(ChangeIdPathFromUriSchema)(uri)).toEqual(
+      decoded,
+    );
   });
 
-  it("encodes change id and path into jjReview URIs", () => {
-    const uri = Schema.encodeSync(ChangeIdPathFromUriSchema)({
-      changeId: Option.some(changeId),
-      path,
-    });
+  it("encodes path, side, and change id into jjReview URIs", () => {
+    const uri = Schema.encodeSync(ChangeIdPathFromUriSchema)(decoded);
 
     expect(uri).toEqual(
       vscode.Uri.from({
         scheme: JjReviewScheme,
         path,
-        query: changeId,
+        query: new URLSearchParams({
+          side: "left",
+          changeId,
+        }).toString(),
       }),
     );
   });
 
   it("round-trips encode and decode", () => {
-    const uri = vscode.Uri.from({
-      scheme: JjReviewScheme,
-      path,
-      query: changeId,
-    });
+    const uri = Schema.encodeSync(ChangeIdPathFromUriSchema)(decoded);
+    const roundTripped = Schema.encodeSync(ChangeIdPathFromUriSchema)(
+      Schema.decodeUnknownSync(ChangeIdPathFromUriSchema)(uri),
+    );
 
-    const decoded = Schema.decodeUnknownSync(ChangeIdPathFromUriSchema)(uri);
-    const encoded = Schema.encodeSync(ChangeIdPathFromUriSchema)(decoded);
-
-    expect(encoded).toEqual(uri);
+    expect(roundTripped).toEqual(uri);
   });
 
   it("rejects other schemes", () => {
     const uri = vscode.Uri.from({
       scheme: "file",
       path,
-      query: changeId,
+      query: new URLSearchParams({
+        side: "left",
+        changeId,
+      }).toString(),
     });
 
     expect(() =>

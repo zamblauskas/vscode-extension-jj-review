@@ -1,7 +1,12 @@
-import { Cause, Console, Effect, Option, pipe, Schema } from "effect";
-import { ChangeId, ChangeIdSchema, Revision } from "../model/revision";
-import { FsPath, FsPathPrefix, FsPathSchema } from "../model/fs-path";
+import { NodeServices } from "@effect/platform-node";
+import { Cause, Console, Effect, Match, Option, pipe, Schema } from "effect";
 import * as vscode from "vscode";
+import { listRootCandidates } from "../jj/log";
+import { FsPath, FsPathSchema } from "../model/fs-path";
+import { HunkHashSchema } from "../model/hunk";
+import { ChangeIdSchema, changeIdToShortStr } from "../model/revision";
+import { MarkedHunksState } from "../state/marked-hunks";
+import { ReviewRangeState } from "../state/review-range";
 import { makeVsCodeOpenDiffArgs } from "./diff";
 
 export interface JjReviewCommand<Args> {
@@ -52,8 +57,14 @@ export const OpenDiffCommand = {
   callback: (args) => {
     return Effect.gen(function* () {
       const vsCodeDiffArgs = yield* makeVsCodeOpenDiffArgs(
-        { path: args.path, changeId: args.leftChangeId },
-        { path: args.path, changeId: Option.some(args.rightChangeId) },
+        {
+          path: args.path,
+          query: { side: "left", changeId: args.leftChangeId },
+        },
+        {
+          path: args.path,
+          query: { side: "right", changeId: Option.some(args.rightChangeId) },
+        },
       );
       return yield* Effect.try(() =>
         vscode.commands.executeCommand<void>(
@@ -67,3 +78,51 @@ export const OpenDiffCommand = {
     });
   },
 } satisfies JjReviewCommand<OpenDiffCommandArgs>;
+
+export const MarkHunkCommandArgsSchema = Schema.Struct({
+  hash: HunkHashSchema,
+});
+
+export type MarkHunkCommandArgs = typeof MarkHunkCommandArgsSchema.Type;
+
+export function makeMarkHunkCommand(
+  store: MarkedHunksState,
+): JjReviewCommand<MarkHunkCommandArgs> {
+  return {
+    name: "jjReview.markHunk",
+    schema: MarkHunkCommandArgsSchema,
+    callback: (args) => store.mark(args.hash),
+  };
+}
+
+export function makeSelectRootCommand(
+  cwd: FsPath,
+  reviewRange: ReviewRangeState,
+): JjReviewCommand<void> {
+  return {
+    name: "jjReview.selectRoot",
+    schema: Schema.Void,
+    callback: () =>
+      Effect.gen(function* () {
+        const candidates = yield* listRootCandidates(cwd);
+        const picked = yield* Effect.tryPromise(() =>
+          vscode.window.showQuickPick(
+            candidates.map((candidate) => ({
+              label: changeIdToShortStr(candidate.changeId),
+              description: candidate.description,
+              changeId: candidate.changeId,
+            })),
+            { placeHolder: "Select review root revision" },
+          ),
+        );
+
+        yield* Match.value(Option.fromUndefinedOr(picked)).pipe(
+          Match.tag("None", () => Effect.void),
+          Match.tag("Some", ({ value }) =>
+            reviewRange.setFrom(Option.some(value.changeId)),
+          ),
+          Match.exhaustive,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+  };
+}

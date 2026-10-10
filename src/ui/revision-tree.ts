@@ -1,17 +1,15 @@
 import * as vscode from "vscode";
 
+import { Effect, Match, Option } from "effect";
+import { SchemaError } from "effect/Schema";
 import {
+  ChangeId,
   FileDiff,
   FileStatus,
-  FileDiffSchema,
   Revision,
-  RevisionSchema,
-  ChangeIdSchema,
+  changeIdToShortStr,
 } from "../model/revision";
-import { Effect, Match, Option, Schema } from "effect";
-import { NodeServices } from "@effect/platform-node";
-import { Brand } from "effect/Brand";
-import { Readonly } from "effect/ai/Tool";
+import { MarkedHunksState } from "../state/marked-hunks";
 import { OpenDiffCommand, OpenDiffCommandArgs } from "./commands";
 
 export class RevisionTree implements vscode.TreeDataProvider<TreeNode> {
@@ -19,14 +17,17 @@ export class RevisionTree implements vscode.TreeDataProvider<TreeNode> {
   readonly onDidChangeTreeData = this.emitter.event;
 
   constructor(
+    private readonly markedHunks: MarkedHunksState,
     private readonly listRevisions: () => Promise<ReadonlyArray<Revision>>,
   ) {}
 
-  getTreeItem(element: TreeNode): vscode.TreeItem {
-    return Match.typeTags<TreeNode>()({
-      Revision: revisionTreeItem,
-      FileDiff: fileDiffTreeItem,
-    })(element);
+  getTreeItem(element: TreeNode): Promise<vscode.TreeItem> {
+    return Effect.runPromise(
+      Match.typeTags<TreeNode>()({
+        Revision: (revision) => Effect.succeed(revisionTreeItem(revision)),
+        FileDiff: (file) => fileDiffTreeItem(file, this.markedHunks),
+      })(element),
+    );
   }
 
   async getChildren(node?: TreeNode): Promise<TreeNode[]> {
@@ -42,9 +43,7 @@ export class RevisionTree implements vscode.TreeDataProvider<TreeNode> {
           Array.from(
             revision.files.map((f) => ({
               ...f,
-              leftChangeId: previousRevision(revision, revisions).pipe(
-                Option.map((r) => r.changeId),
-              ),
+              leftChangeId: firstParent(revision),
               rightChangeId: revision.changeId,
             })),
           ),
@@ -58,12 +57,8 @@ export class RevisionTree implements vscode.TreeDataProvider<TreeNode> {
   }
 }
 
-function previousRevision(
-  revision: Revision,
-  revisions: ReadonlyArray<Revision>,
-): Option.Option<Revision> {
-  const idx = revisions.findIndex((r) => r.changeId === revision.changeId);
-  return Option.fromUndefinedOr(revisions[idx + 1]);
+function firstParent(revision: Revision): Option.Option<ChangeId> {
+  return Option.fromUndefinedOr(revision.parentChangeIds[0]);
 }
 
 function revisionIcon(revision: Revision): vscode.ThemeIcon {
@@ -99,7 +94,7 @@ function revisionIcon(revision: Revision): vscode.ThemeIcon {
 function revisionTreeItem(revision: Revision): vscode.TreeItem {
   return {
     id: revision.changeId,
-    label: revision.changeId.substring(0, 3),
+    label: changeIdToShortStr(revision.changeId),
     iconPath: revisionIcon(revision),
     description: revision.description,
     collapsibleState:
@@ -142,11 +137,28 @@ function fileStatusAppearance(
   )(status);
 }
 
-function fileDiffTreeItem(file: FileDiffTreeNode): vscode.TreeItem {
+function fileDiffTreeItem(
+  file: FileDiffTreeNode,
+  markedHunksState: MarkedHunksState,
+): Effect.Effect<vscode.TreeItem, SchemaError> {
+  return Effect.gen(function* () {
+    const totalHunks = file.hunks.length;
+    const markedHunks = (yield* Effect.filter(file.hunks, (hunk) =>
+      markedHunksState.isMarked(hunk.hash),
+    )).length;
+    return fileDiffTreeItemFromCounts(file, markedHunks, totalHunks);
+  });
+}
+
+function fileDiffTreeItemFromCounts(
+  file: FileDiffTreeNode,
+  markedHunks: number,
+  totalHunks: number,
+): vscode.TreeItem {
   return {
     label: file.path,
     iconPath: fileDiffIcon(file),
-    description: `+${file.added} -${file.removed}`,
+    description: `+${file.added} -${file.removed} (${markedHunks}/${totalHunks})`,
     command: {
       command: OpenDiffCommand.name,
       title: "Open Diff",
@@ -161,13 +173,9 @@ function fileDiffTreeItem(file: FileDiffTreeNode): vscode.TreeItem {
   };
 }
 
-const FileDiffTreeNodeSchema = FileDiffSchema.pipe(
-  Schema.fieldsAssign({
-    leftChangeId: Schema.Option(ChangeIdSchema),
-    rightChangeId: ChangeIdSchema,
-  }),
-);
-type FileDiffTreeNode = typeof FileDiffTreeNodeSchema.Type;
+type FileDiffTreeNode = FileDiff & {
+  readonly leftChangeId: Option.Option<ChangeId>;
+  readonly rightChangeId: ChangeId;
+};
 
-const TreeNodeSchema = Schema.Union([RevisionSchema, FileDiffTreeNodeSchema]);
-type TreeNode = typeof TreeNodeSchema.Type;
+type TreeNode = Revision | FileDiffTreeNode;

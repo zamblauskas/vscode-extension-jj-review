@@ -29,7 +29,24 @@
           "name": "JJ Review"
         }
       ]
-    }
+    },
+    "commands": [
+      {
+        "command": "jjReview.selectRoot",
+        "title": "Select Review Root",
+        "icon": "$(target)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "jjReview.selectRoot",
+          "when": "view == jj-review.view",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configurationDefaults": { "diffEditor.codeLens": true }
   },
   "scripts": {
     "check": "tsc --noEmit",
