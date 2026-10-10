@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ChangeIdSchema } from "../model/revision";
 import { FsPathSchema } from "../model/fs-path";
@@ -46,14 +46,14 @@ describe("ChangeIdPathFromUriSchema", () => {
     });
 
     expect(Schema.decodeUnknownSync(ChangeIdPathFromUriSchema)(uri)).toEqual({
-      changeId,
+      changeId: Option.some(changeId),
       path,
     });
   });
 
   it("encodes change id and path into jjReview URIs", () => {
     const uri = Schema.encodeSync(ChangeIdPathFromUriSchema)({
-      changeId,
+      changeId: Option.some(changeId),
       path,
     });
 

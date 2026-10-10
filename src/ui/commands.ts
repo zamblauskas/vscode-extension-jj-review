@@ -52,11 +52,8 @@ export const OpenDiffCommand = {
   callback: (args) => {
     return Effect.gen(function* () {
       const vsCodeDiffArgs = yield* makeVsCodeOpenDiffArgs(
-        Option.map(args.leftChangeId, (left) => ({
-          path: args.path,
-          changeId: left,
-        })),
-        { path: args.path, changeId: args.rightChangeId },
+        { path: args.path, changeId: args.leftChangeId },
+        { path: args.path, changeId: Option.some(args.rightChangeId) },
       );
       return yield* Effect.try(() =>
         vscode.commands.executeCommand<void>(

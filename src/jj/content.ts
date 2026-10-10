@@ -10,13 +10,16 @@ export type FileContent = typeof FileContentSchema.Type;
 
 export function getFileContent(
   cwd: FsPath,
-  changeId: ChangeId,
+  changeId: Option.Option<ChangeId>,
   path: FsPath,
 ): Effect.Effect<
   Option.Option<FileContent>,
   PlatformError.PlatformError,
   ChildProcessSpawner.ChildProcessSpawner
 > {
+  if (Option.isNone(changeId)) {
+    return Effect.succeed(Option.none());
+  }
   const command = ChildProcess.make(
     "jj",
     [
@@ -28,7 +31,7 @@ export function getFileContent(
       "--quiet",
       "--config=templates.file_show=",
       "-r",
-      changeId,
+      changeId.value,
       path,
     ],
     { cwd },

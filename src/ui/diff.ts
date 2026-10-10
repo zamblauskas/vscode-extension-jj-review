@@ -7,7 +7,7 @@ import {
   SchemaIssue,
   SchemaTransformation,
 } from "effect";
-import { ChangeIdSchema, Revision } from "../model/revision";
+import { ChangeId, ChangeIdSchema, Revision } from "../model/revision";
 import { FsPath, FsPathSchema } from "../model/fs-path";
 import { getFileContent } from "../jj/content";
 import { NodeServices } from "@effect/platform-node";
@@ -21,19 +21,16 @@ export type VsCodeOpenDiffArgs = {
 };
 
 export function makeVsCodeOpenDiffArgs(
-  leftChangeIdPath: Option.Option<ChangeIdPath>,
+  leftChangeIdPath: ChangeIdPath,
   rightChangeIdPath: ChangeIdPath,
 ): Effect.Effect<VsCodeOpenDiffArgs, SchemaError> {
   return Effect.gen(function* () {
+    const left = yield* Schema.encodeEffect(ChangeIdPathFromUriSchema)(
+      leftChangeIdPath,
+    );
     const right = yield* Schema.encodeEffect(ChangeIdPathFromUriSchema)(
       rightChangeIdPath,
     );
-
-    const left = Option.isSome(leftChangeIdPath)
-      ? yield* Schema.encodeEffect(ChangeIdPathFromUriSchema)(
-          leftChangeIdPath.value,
-        )
-      : right;
     const title = formatDiffTitle(leftChangeIdPath, rightChangeIdPath);
     const showOpts = {};
 
@@ -51,7 +48,7 @@ const VsCodeUri = Schema.declare(
 );
 
 const ChangeIdPathSchema = Schema.Struct({
-  changeId: ChangeIdSchema,
+  changeId: Schema.Option(ChangeIdSchema),
   path: FsPathSchema,
 });
 
@@ -72,14 +69,17 @@ export const ChangeIdPathFromUriSchema = VsCodeUri.pipe(
           );
         }
 
-        return Effect.succeed({ changeId: uri.query, path: uri.path });
+        const changeId: Option.Option<string> =
+          uri.query.trim().length > 0 ? Option.some(uri.query) : Option.none();
+
+        return Effect.succeed({ changeId, path: uri.path });
       },
       encode: ({ changeId, path }) => {
         return Effect.succeed(
           vscode.Uri.from({
             scheme: JjReviewScheme,
             path: path,
-            query: changeId,
+            query: Option.getOrElse(changeId, () => ""),
           }),
         );
       },
@@ -120,13 +120,10 @@ export class JjReviewContentProvider
 }
 
 function formatDiffTitle(
-  leftChangeIdPath: Option.Option<ChangeIdPath>,
+  leftChangeIdPath: ChangeIdPath,
   rightChangeIdPath: ChangeIdPath,
 ): string {
-  const changeIdPrefix = Option.match(leftChangeIdPath, {
-    onNone: () => "",
-    onSome: (left) => `${left.changeId.slice(0, 3)}:`,
-  });
+  const changeIdPrefix = `${Option.map(leftChangeIdPath.changeId, (changeId) => changeId.slice(0, 3))}:`;
 
-  return `${changeIdPrefix}${rightChangeIdPath.changeId.slice(0, 3)} ${rightChangeIdPath.path}`;
+  return `${changeIdPrefix}${Option.map(rightChangeIdPath.changeId, (changeId) => changeId.slice(0, 3))} ${rightChangeIdPath.path}`;
 }
