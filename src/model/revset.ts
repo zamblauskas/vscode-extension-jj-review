@@ -14,8 +14,10 @@ export function makeRevset(
     Match.tag("Some", ({ value }) =>
       RevsetSchema.make(
         Option.match(to, {
-          onNone: () => `${value}:: & (::@ | @::)`,
-          onSome: (toValue) => `${value}::${toValue}`,
+          onNone: () =>
+            `coalesce(present(${value}):: & (::@ | @::), ${defaultRevset})`,
+          onSome: (toValue) =>
+            `coalesce(present(${value})::present(${toValue}), ${defaultRevset})`,
         }),
       ),
     ),

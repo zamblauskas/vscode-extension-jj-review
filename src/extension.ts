@@ -15,7 +15,7 @@ import { toHunk } from "./jj/diff-dto";
 import { listRevisions } from "./jj/log";
 import { JjRevisionDto } from "./jj/log-dto";
 import { FsPathPrefix, FsPathSchema } from "./model/fs-path";
-import { ChangeId, Revision, changeIdToShortStr } from "./model/revision";
+import { Revision } from "./model/revision";
 import { MarkedHunksState } from "./state/marked-hunks";
 import {
   makeMarkHunkCommand,
@@ -63,30 +63,13 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCommand(context, makeMarkHunkCommand(markedHunks));
   registerCommand(context, makeSelectRootCommand(cwd, reviewRangeState));
 
-  const treeView = vscode.window.createTreeView("jj-review.view", {
-    treeDataProvider: revisionTree,
-  });
-  const updateDescription = () =>
-    runtime.runPromise(
-      reviewRangeState.get().pipe(
-        Effect.map(({ from }) => {
-          treeView.description = Option.match(from, {
-            onNone: () => "",
-            onSome: (changeId) => `from ${changeIdToShortStr(changeId)}`,
-          });
-        }),
-      ),
-    );
-  void updateDescription();
-
   context.subscriptions.push(
-    treeView,
+    vscode.window.registerTreeDataProvider("jj-review.view", revisionTree),
     markedHunks.onDidChange(() => {
       revisionTree.refresh();
     }),
     reviewRangeState.onDidChange(() => {
       revisionTree.refresh();
-      void updateDescription();
     }),
     vscode.workspace.registerTextDocumentContentProvider(
       JjReviewScheme,
