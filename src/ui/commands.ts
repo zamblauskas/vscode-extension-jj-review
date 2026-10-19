@@ -4,7 +4,12 @@ import * as vscode from "vscode";
 import { listRootCandidates } from "../jj/log";
 import { FsPath, FsPathSchema } from "../model/fs-path";
 import { HunkHashSchema } from "../model/hunk";
-import { ChangeIdSchema, changeIdToShortStr } from "../model/revision";
+import {
+  ChangeIdSchema,
+  changeIdToShortStr,
+  FileDiff,
+  FileDiffSchema,
+} from "../model/revision";
 import { MarkedHunksState } from "../state/marked-hunks";
 import { ReviewRangeState } from "../state/review-range";
 import { makeVsCodeOpenDiffArgs } from "./diff";
@@ -124,5 +129,25 @@ export function makeSelectRootCommand(
           Match.exhaustive,
         );
       }).pipe(Effect.provide(NodeServices.layer)),
+  };
+}
+
+export function makeMarkFileCommand(
+  store: MarkedHunksState,
+): JjReviewCommand<FileDiff> {
+  return {
+    name: "jjReview.markFile",
+    schema: FileDiffSchema,
+    callback: ({ hunks }) => store.markAll(hunks.map((h) => h.hash)),
+  };
+}
+
+export function makeUnmarkFileCommand(
+  store: MarkedHunksState,
+): JjReviewCommand<FileDiff> {
+  return {
+    name: "jjReview.unmarkFile",
+    schema: FileDiffSchema,
+    callback: ({ hunks }) => store.unmarkAll(hunks.map((h) => h.hash)),
   };
 }

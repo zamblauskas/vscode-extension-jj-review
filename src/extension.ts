@@ -18,8 +18,10 @@ import { FsPathPrefix, FsPathSchema } from "./model/fs-path";
 import { Revision } from "./model/revision";
 import { MarkedHunksState } from "./state/marked-hunks";
 import {
+  makeMarkFileCommand,
   makeMarkHunkCommand,
   makeSelectRootCommand,
+  makeUnmarkFileCommand,
   OpenDiffCommand,
   registerCommand,
 } from "./ui/commands";
@@ -61,6 +63,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, OpenDiffCommand);
   registerCommand(context, makeMarkHunkCommand(markedHunks));
+  registerCommand(context, makeMarkFileCommand(markedHunks));
+  registerCommand(context, makeUnmarkFileCommand(markedHunks));
   registerCommand(context, makeSelectRootCommand(cwd, reviewRangeState));
 
   context.subscriptions.push(

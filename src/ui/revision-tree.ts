@@ -170,8 +170,21 @@ function fileDiffTreeItemFromCounts(
         } satisfies OpenDiffCommandArgs,
       ],
     },
+    contextValue: fileMarkContextValue(markedHunks, totalHunks),
   };
 }
+
+function fileMarkContextValue(marked: number, total: number): FileMarkState {
+  if (marked >= total) {
+    return "marked";
+  } else if (marked <= 0) {
+    return "unmarked";
+  } else {
+    return "partial";
+  }
+}
+
+type FileMarkState = "marked" | "unmarked" | "partial";
 
 type FileDiffTreeNode = FileDiff & {
   readonly leftChangeId: Option.Option<ChangeId>;

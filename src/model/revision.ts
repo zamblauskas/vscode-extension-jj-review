@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { FsPath } from "./fs-path";
-import { Hunk } from "./hunk";
+import { FsPathSchema } from "./fs-path";
+import { HunkSchema } from "./hunk";
 
 export const FileStatusSchema = Schema.Literals([
   "modified",
@@ -11,14 +11,15 @@ export const FileStatusSchema = Schema.Literals([
 ]);
 export type FileStatus = typeof FileStatusSchema.Type;
 
-export type FileDiff = {
-  readonly _tag: "FileDiff";
-  readonly path: FsPath;
-  readonly added: number;
-  readonly removed: number;
-  readonly status: FileStatus;
-  readonly hunks: ReadonlyArray<Hunk>;
-};
+export const FileDiffSchema = Schema.TaggedStruct("FileDiff", {
+  path: FsPathSchema,
+  added: Schema.Number,
+  removed: Schema.Number,
+  status: FileStatusSchema,
+  hunks: Schema.Array(HunkSchema),
+});
+
+export type FileDiff = typeof FileDiffSchema.Type;
 
 export const ChangeIdSchema = Schema.String.pipe(Schema.brand("ChangeId"));
 export type ChangeId = typeof ChangeIdSchema.Type;
@@ -27,12 +28,13 @@ export function changeIdToShortStr(changeId: ChangeId): string {
   return changeId.substring(0, 3);
 }
 
-export type Revision = {
-  readonly _tag: "Revision";
-  readonly changeId: ChangeId;
-  readonly description: string;
-  readonly parentChangeIds: ReadonlyArray<ChangeId>;
-  readonly isCurrentCopy: boolean;
-  readonly isConflict: boolean;
-  readonly files: ReadonlyArray<FileDiff>;
-};
+export const RevisionSchema = Schema.TaggedStruct("Revision", {
+  changeId: ChangeIdSchema,
+  description: Schema.String,
+  parentChangeIds: Schema.Array(ChangeIdSchema),
+  isCurrentCopy: Schema.Boolean,
+  isConflict: Schema.Boolean,
+  files: Schema.Array(FileDiffSchema),
+});
+
+export type Revision = typeof RevisionSchema.Type;

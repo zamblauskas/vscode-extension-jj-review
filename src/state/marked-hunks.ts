@@ -3,7 +3,6 @@ import { UnknownError } from "effect/Cause";
 import { SchemaError } from "effect/Schema";
 import * as vscode from "vscode";
 import { HunkHash, HunkHashSchema } from "../model/hunk";
-
 export class MarkedHunksState {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
@@ -14,23 +13,36 @@ export class MarkedHunksState {
     return this.get().pipe(Effect.map((hashes) => hashes.includes(hash)));
   }
 
-  mark(hash: HunkHash): Effect.Effect<void, SchemaError | UnknownError> {
-    return Effect.gen({ self: this }, function* () {
-      const hashes = yield* this.get();
-      if (hashes.includes(hash)) {
-        return;
-      }
+  markAll(
+    hashes: ReadonlyArray<HunkHash>,
+  ): Effect.Effect<void, SchemaError | UnknownError> {
+    return this.update((s) => [...new Set([...s, ...hashes])]);
+  }
 
-      const data = yield* Schema.encodeEffect(StateSchema)([...hashes, hash]);
-      yield* Effect.tryPromise(() => this.workspaceState.update(key, data));
-      this.emitter.fire();
-    });
+  unmarkAll(
+    hashes: ReadonlyArray<HunkHash>,
+  ): Effect.Effect<void, SchemaError | UnknownError> {
+    return this.update((current) => current.filter((h) => !hashes.includes(h)));
+  }
+
+  mark(hash: HunkHash): Effect.Effect<void, SchemaError | UnknownError> {
+    return this.markAll([hash]);
   }
 
   // TODO very inefficient - cache until something is marked?
   private get(): Effect.Effect<State, SchemaError> {
     const stored = this.workspaceState.get<unknown>(key) ?? [];
     return Schema.decodeUnknownEffect(StateSchema)(stored);
+  }
+
+  private update(
+    f: (s: State) => State,
+  ): Effect.Effect<void, SchemaError | UnknownError> {
+    return Effect.gen({ self: this }, function* () {
+      const s = yield* this.get();
+      yield* Effect.tryPromise(() => this.workspaceState.update(key, f(s)));
+      this.emitter.fire();
+    });
   }
 }
 
