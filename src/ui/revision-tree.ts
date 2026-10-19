@@ -24,7 +24,7 @@ export class RevisionTree implements vscode.TreeDataProvider<TreeNode> {
   getTreeItem(element: TreeNode): Promise<vscode.TreeItem> {
     return Effect.runPromise(
       Match.typeTags<TreeNode>()({
-        Revision: (revision) => Effect.succeed(revisionTreeItem(revision)),
+        Revision: (revision) => revisionTreeItem(revision, this.markedHunks),
         FileDiff: (file) => fileDiffTreeItem(file, this.markedHunks),
       })(element),
     );
@@ -61,80 +61,79 @@ function firstParent(revision: Revision): Option.Option<ChangeId> {
   return Option.fromUndefinedOr(revision.parentChangeIds[0]);
 }
 
-function revisionIcon(revision: Revision): vscode.ThemeIcon {
-  const [icon, color] = Match.type<{
-    readonly isCurrentCopy: boolean;
-    readonly hasFiles: boolean;
-  }>().pipe(
+function revisionIcon(markState: MarkState): vscode.ThemeIcon {
+  const [icon, color] = Match.type<MarkState>().pipe(
     Match.when(
-      { isCurrentCopy: true, hasFiles: false },
-      () => ["debug-breakpoint-unverified", "charts.green"] as const,
+      "marked",
+      () => ["diff-added", "gitDecoration.addedResourceForeground"] as const,
     ),
     Match.when(
-      { isCurrentCopy: true, hasFiles: true },
-      () => ["debug-breakpoint-disabled", "charts.green"] as const,
+      "partial",
+      () =>
+        ["diff-modified", "gitDecoration.modifiedResourceForeground"] as const,
     ),
-    Match.when(
-      { isCurrentCopy: false, hasFiles: false },
-      () => ["debug-breakpoint-unverified", "charts.blue"] as const,
-    ),
-    Match.when(
-      { isCurrentCopy: false, hasFiles: true },
-      () => ["debug-breakpoint-disabled", "charts.blue"] as const,
-    ),
+    Match.when("unmarked", () => ["debug-stop", "disabledForeground"] as const),
     Match.exhaustive,
-  )({
-    isCurrentCopy: revision.isCurrentCopy,
-    hasFiles: revision.files.length > 0,
-  });
+  )(markState);
 
   return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 }
 
-function revisionTreeItem(revision: Revision): vscode.TreeItem {
-  return {
-    id: revision.changeId,
-    label: changeIdToShortStr(revision.changeId),
-    iconPath: revisionIcon(revision),
-    description: revision.description,
-    collapsibleState:
-      revision.files.length > 0
-        ? vscode.TreeItemCollapsibleState.Collapsed
-        : vscode.TreeItemCollapsibleState.None,
-  };
+function revisionTreeItem(
+  revision: Revision,
+  markedHunksState: MarkedHunksState,
+): Effect.Effect<vscode.TreeItem, SchemaError> {
+  return Effect.gen(function* () {
+    const allHunks = revision.files.flatMap((file) => file.hunks);
+    const totalHunks = allHunks.length;
+    const markedHunks = (yield* Effect.filter(allHunks, (hunk) =>
+      markedHunksState.isMarked(hunk.hash),
+    )).length;
+    const markState =
+      totalHunks === 0
+        ? "unmarked"
+        : markStateFromCounts(markedHunks, totalHunks);
+
+    return {
+      id: revision.changeId,
+      label: changeIdToShortStr(revision.changeId),
+      iconPath: revisionIcon(markState),
+      description: revision.description,
+      collapsibleState:
+        revision.files.length > 0
+          ? vscode.TreeItemCollapsibleState.Collapsed
+          : vscode.TreeItemCollapsibleState.None,
+    };
+  });
 }
 
-function fileDiffIcon(file: FileDiffTreeNode): vscode.ThemeIcon {
-  const [icon, color] = fileStatusAppearance(file.status);
+function fileDiffIcon(
+  file: FileDiffTreeNode,
+  markState: MarkState,
+): vscode.ThemeIcon {
+  const [icon, color] = fileStatusAppearance(file.status, markState);
   return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 }
 
 function fileStatusAppearance(
   status: FileStatus,
+  markState: MarkState,
 ): readonly [icon: string, color: string] {
-  return Match.type<FileStatus>().pipe(
+  return Match.type<MarkState>().pipe(
     Match.whenOr(
-      "added",
-      "copied",
-      () => ["diff-added", "gitDecoration.addedResourceForeground"] as const,
+      "marked",
+      () => ["pass-filled", "gitDecoration.addedResourceForeground"] as const,
     ),
     Match.when(
-      "modified",
-      () =>
-        ["diff-modified", "gitDecoration.modifiedResourceForeground"] as const,
+      "partial",
+      () => ["issues", "gitDecoration.modifiedResourceForeground"] as const,
     ),
     Match.when(
-      "removed",
-      () =>
-        ["diff-removed", "gitDecoration.deletedResourceForeground"] as const,
-    ),
-    Match.when(
-      "renamed",
-      () =>
-        ["diff-renamed", "gitDecoration.renamedResourceForeground"] as const,
+      "unmarked",
+      () => ["circle-large-outline", "disabledForeground"] as const,
     ),
     Match.exhaustive,
-  )(status);
+  )(markState);
 }
 
 function fileDiffTreeItem(
@@ -155,9 +154,10 @@ function fileDiffTreeItemFromCounts(
   markedHunks: number,
   totalHunks: number,
 ): vscode.TreeItem {
+  const markState = markStateFromCounts(markedHunks, totalHunks);
   return {
     label: file.path,
-    iconPath: fileDiffIcon(file),
+    iconPath: fileDiffIcon(file, markState),
     description: `+${file.added} -${file.removed} (${markedHunks}/${totalHunks})`,
     command: {
       command: OpenDiffCommand.name,
@@ -170,11 +170,11 @@ function fileDiffTreeItemFromCounts(
         } satisfies OpenDiffCommandArgs,
       ],
     },
-    contextValue: fileMarkContextValue(markedHunks, totalHunks),
+    contextValue: markState,
   };
 }
 
-function fileMarkContextValue(marked: number, total: number): FileMarkState {
+function markStateFromCounts(marked: number, total: number): MarkState {
   if (marked >= total) {
     return "marked";
   } else if (marked <= 0) {
@@ -184,7 +184,7 @@ function fileMarkContextValue(marked: number, total: number): FileMarkState {
   }
 }
 
-type FileMarkState = "marked" | "unmarked" | "partial";
+type MarkState = "marked" | "unmarked" | "partial";
 
 type FileDiffTreeNode = FileDiff & {
   readonly leftChangeId: Option.Option<ChangeId>;
