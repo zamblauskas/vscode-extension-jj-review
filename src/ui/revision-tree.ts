@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { Effect, Match, Option } from "effect";
 import { SchemaError } from "effect/Schema";
+import { Hunk } from "../model/hunk";
 import {
   ChangeId,
   FileDiff,
@@ -85,26 +86,32 @@ function revisionTreeItem(
 ): Effect.Effect<vscode.TreeItem, SchemaError> {
   return Effect.gen(function* () {
     const allHunks = revision.files.flatMap((file) => file.hunks);
-    const totalHunks = allHunks.length;
-    const markedHunks = (yield* Effect.filter(allHunks, (hunk) =>
-      markedHunksState.isMarked(hunk.hash),
-    )).length;
+    const stats = yield* reviewStats(allHunks, markedHunksState);
     const markState =
-      totalHunks === 0
+      stats.totalHunks === 0
         ? "unmarked"
-        : markStateFromCounts(markedHunks, totalHunks);
+        : markStateFromCounts(stats.markedHunks, stats.totalHunks);
 
     return {
       id: revision.changeId,
       label: changeIdToShortStr(revision.changeId),
       iconPath: revisionIcon(markState),
-      description: revision.description,
+      description: revisionDescription(revision.description, stats.linesLeft),
+      tooltip: reviewTooltip(stats),
       collapsibleState:
         revision.files.length > 0
           ? vscode.TreeItemCollapsibleState.Collapsed
           : vscode.TreeItemCollapsibleState.None,
     };
   });
+}
+
+function revisionDescription(description: string, linesLeft: number): string {
+  if (description.length === 0) {
+    return `(${linesLeft} left)`;
+  }
+
+  return `(${linesLeft} left) ${description}`;
 }
 
 function fileDiffIcon(
@@ -141,24 +148,21 @@ function fileDiffTreeItem(
   markedHunksState: MarkedHunksState,
 ): Effect.Effect<vscode.TreeItem, SchemaError> {
   return Effect.gen(function* () {
-    const totalHunks = file.hunks.length;
-    const markedHunks = (yield* Effect.filter(file.hunks, (hunk) =>
-      markedHunksState.isMarked(hunk.hash),
-    )).length;
-    return fileDiffTreeItemFromCounts(file, markedHunks, totalHunks);
+    const stats = yield* reviewStats(file.hunks, markedHunksState);
+    return fileDiffTreeItemFromStats(file, stats);
   });
 }
 
-function fileDiffTreeItemFromCounts(
+function fileDiffTreeItemFromStats(
   file: FileDiffTreeNode,
-  markedHunks: number,
-  totalHunks: number,
+  stats: ReviewStats,
 ): vscode.TreeItem {
-  const markState = markStateFromCounts(markedHunks, totalHunks);
+  const markState = markStateFromCounts(stats.markedHunks, stats.totalHunks);
   return {
     label: file.path,
     iconPath: fileDiffIcon(file, markState),
-    description: `+${file.added} -${file.removed} (${markedHunks}/${totalHunks})`,
+    description: `+${file.added} -${file.removed} (${stats.markedHunks}/${stats.totalHunks} · ${stats.linesLeft} left)`,
+    tooltip: reviewTooltip(stats),
     command: {
       command: OpenDiffCommand.name,
       title: "Open Diff",
@@ -173,6 +177,38 @@ function fileDiffTreeItemFromCounts(
     contextValue: markState,
   };
 }
+
+function reviewStats(
+  hunks: ReadonlyArray<Hunk>,
+  markedHunksState: MarkedHunksState,
+): Effect.Effect<ReviewStats, SchemaError> {
+  return Effect.gen(function* () {
+    const unmarked = yield* Effect.filter(hunks, (hunk) =>
+      markedHunksState
+        .isMarked(hunk.hash)
+        .pipe(Effect.map((marked) => !marked)),
+    );
+    const linesLeft = unmarked.reduce(
+      (sum, hunk) => sum + hunk.added + hunk.removed,
+      0,
+    );
+    return {
+      markedHunks: hunks.length - unmarked.length,
+      totalHunks: hunks.length,
+      linesLeft,
+    };
+  });
+}
+
+function reviewTooltip(stats: ReviewStats): string {
+  return `${stats.markedHunks}/${stats.totalHunks} hunks reviewed · ${stats.linesLeft} lines remaining`;
+}
+
+type ReviewStats = {
+  readonly markedHunks: number;
+  readonly totalHunks: number;
+  readonly linesLeft: number;
+};
 
 function markStateFromCounts(marked: number, total: number): MarkState {
   if (marked >= total) {

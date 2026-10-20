@@ -32,6 +32,8 @@ describe("parseHunks", () => {
     expect(parseHunks(path, stdout)).toEqual([
       {
         startLineNumber: 3,
+        added: 2,
+        removed: 1,
         hash: hashFor(lines, "01"),
       },
     ]);
@@ -50,6 +52,8 @@ describe("parseHunks", () => {
     expect(parseHunks(path, stdout)).toEqual([
       {
         startLineNumber: 3,
+        added: 1,
+        removed: 1,
         hash: hashFor(lines, "01"),
       },
     ]);
@@ -71,10 +75,14 @@ describe("parseHunks", () => {
     expect(parseHunks(path, stdout)).toEqual([
       {
         startLineNumber: 0,
+        added: 1,
+        removed: 2,
         hash: hashFor(first, "01"),
       },
       {
         startLineNumber: 20,
+        added: 4,
+        removed: 1,
         hash: hashFor(second, "01"),
       },
     ]);
@@ -93,6 +101,8 @@ describe("parseHunks", () => {
     expect(parseHunks(path, stdout)).toEqual([
       {
         startLineNumber: 7,
+        added: 0,
+        removed: 2,
         hash: hashFor(lines, "01"),
       },
     ]);
@@ -110,10 +120,14 @@ describe("parseHunks", () => {
     expect(parseHunks(path, stdout)).toEqual([
       {
         startLineNumber: 1,
+        added: 1,
+        removed: 1,
         hash: hashFor(lines, "01"),
       },
       {
         startLineNumber: 49,
+        added: 1,
+        removed: 1,
         hash: hashFor(lines, "02"),
       },
     ]);
@@ -127,12 +141,16 @@ describe("parseHunks", () => {
     expect(parseHunks(path, early)).toEqual([
       {
         startLineNumber: 1,
+        added: 1,
+        removed: 1,
         hash: hashFor(lines, "01"),
       },
     ]);
     expect(parseHunks(path, late)).toEqual([
       {
         startLineNumber: 89,
+        added: 1,
+        removed: 1,
         hash: hashFor(lines, "01"),
       },
     ]);

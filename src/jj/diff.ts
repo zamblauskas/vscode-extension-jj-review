@@ -138,6 +138,8 @@ function appendHunk(
 
   hunks.push({
     startLineNumber: startLineNumber(pending.newStart, pending.newCount),
+    added: pending.lines.filter((line) => line.startsWith("+")).length,
+    removed: pending.lines.filter((line) => line.startsWith("-")).length,
     hash: hashHunk(
       path,
       pending.lines,
