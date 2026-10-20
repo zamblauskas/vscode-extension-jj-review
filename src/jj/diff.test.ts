@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { FsPathSchema } from "../model/fs-path";
+import { hash } from "../util/crypto";
 import { parseHunks, parseRevisionHunks } from "./diff";
 import { JjHunkDto } from "./diff-dto";
 
@@ -11,9 +11,7 @@ describe("parseHunks", () => {
     lines: ReadonlyArray<string>,
     ordinal: string,
   ): JjHunkDto["hash"] {
-    return createHash("sha256")
-      .update(`${path}\n${lines.join("\n")}\n${ordinal}`)
-      .digest("hex");
+    return hash([path, lines, ordinal]);
   }
 
   it("parses a single hunk", () => {

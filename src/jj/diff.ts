@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { Effect, PlatformError } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { FsPath, FsPathSchema } from "../model/fs-path";
 import { ChangeId } from "../model/revision";
 import { CommandError, runCommand } from "../util/cmd";
+import { hash } from "../util/crypto";
 import { JjHunkDto } from "./diff-dto";
 
 // TODO: do we actually need this, given we can get the hunks from the revision?
@@ -148,15 +148,12 @@ function appendHunk(
   });
 }
 
-// TODO: we need to hash the change ID as well
 function hashHunk(
   path: FsPath,
   lines: ReadonlyArray<string>,
   ordinal: string,
 ): string {
-  return createHash("sha256")
-    .update(`${path}\n${lines.join("\n")}\n${ordinal}`)
-    .digest("hex");
+  return hash([path, lines, ordinal]);
 }
 
 function nextOrdinal(
@@ -228,7 +225,6 @@ const diffArgs = [
   "--no-pager",
   "--color=never",
 ];
-
 const fileHeaderPrefix = "diff --git ";
 const oldPathPrefix = "--- a/";
 const newPathPrefix = "+++ b/";
